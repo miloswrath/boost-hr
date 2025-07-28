@@ -1,0 +1,11 @@
+implementation=CPython
+version=3.13
+shared=true
+abi3=false
+lib_name=python3.13
+lib_dir=/nix/store/9yh9ak97gn659bk4d3n411fx6c0ng7s2-python3-3.13.5/lib
+executable=/home/zak/work/hbc/boost/hr/.venv/bin/python
+pointer_width=64
+build_flags=
+python_framework_prefix=
+suppress_build_script_link_lines=false

@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<body>
+  <div id="chart"></div>
+
+  <script src="https://d3js.org/d3.v7.min.js"></script>
+  <script>
+  // ——— Example input: replace with your fetch/JSON loading ———
+  // Array of { time: ISOString, hr: Number }
+  const hrData = <!-- DATA_PLACEHOLDER --> 
+
+  // ——— 1. Parse times & bin into 30 sec intervals ———
+  // parse “hours:minutes:seconds” into a Date (defaults to Jan 1, 1970)
+  const parseHMS = d3.timeParse("%H:%M:%S");
+  hrData.forEach(d => {
+    d.time = parseHMS(d.time);
+  });
+  const t0 = hrData[0].time.getTime();
+  const binSize = 45 * 1000; // 30 seconds
+
+  // Group by 30 sec window index
+  const bins = d3.groups(hrData, 
+    d => Math.floor((d.time.getTime() - t0) / binSize)
+  );
+
+  // ——— 2. Define 5 HR zones ———
+  const zones = [
+    { name: "Zone 0", min:   0, max:  89, color: "#7049FF" },
+    { name: "Zone 1", min:   90, max:  97, color: "#3A82F7" },
+    { name: "Zone 2", min:  98, max: 106, color: "#87E3E1" },
+    { name: "Zone 3", min: 107, max: 114, color: "#BAF13B" },
+    { name: "Zone 4", min: 115, max: 122, color: "#F1A33B" },
+    { name: "Zone 5", min: 123, max: 130, color: "#EE3C71" },
+    { name: "Zone 6", min: 131, max: Infinity, color: "#800000" }
+  ];
+
+  // ——— 3. Build the OHLC “ticker” array ———
+  let ticker = bins.map(([idx, values]) => {
+    values.sort((a, b) => a.time - b.time);
+    const open  = values[0].hr;
+    const close = values[values.length - 1].hr;
+    const low   = d3.min(values, d => d.hr);
+    const high  = d3.max(values, d => d.hr);
+
+    return {
+      Date:  new Date(t0 + idx * binSize),
+      Open:  open,
+      Close: close,
+      Low:   low,
+      High:  high
+    };
+  });
+
+  ticker = ticker.map((bar, i) => {
+    let zone;
+    if (i > 0) {
+      const prev = ticker[i - 1];
+      const trendUp = bar.Close > prev.Close;
+      if (trendUp) {
+        zone = zones.slice().reverse().find(z => bar.High >= z.min);
+      } else {
+        zone = zones.slice().reverse().find(z => bar.Low >= z.min);
+      }
+    } else {
+      zone = zones.slice().reverse().find(z => bar.High >= z.min);
+    }
+
+    return { ...bar, zone };
+  });
+  const avgHR = d3.mean(ticker, d => {
+    if (typeof d.Low === 'number' && typeof d.High === 'number') {
+      return (d.Low + d.High) / 2;
+    }
+    return undefined;
+  });
+
+  const minHR = d3.min(ticker, d => typeof d.Low === 'number' ? d.Low : undefined);
+  const maxHR = d3.max(ticker, d => typeof d.High === 'number' ? d.High : undefined);
+
+  // Round to nearest 5 to match scale resolution
+  const ticks = [
+    Math.floor(minHR / 5) * 5,
+    Math.round(avgHR),
+    Math.ceil(maxHR / 5) * 5
+  ];
+
+
+
+  // ——— 4. Set up SVG & scales ———
+  const margin = { top: 20, right: 30, bottom: 30, left: 90 };
+  const width  = 1500 - margin.left - margin.right;
+  const height = 900 - margin.top  - margin.bottom;
+
+  const x = d3.scaleBand()
+      .domain(ticker.map(d => d.Date))
+      .range([0, width])
+      .padding(0.2);
+
+  const y = d3.scaleLinear()
+      .domain([
+        d3.min(ticker, d => d.Low),
+        d3.max(ticker, d => d.High)
+      ]).nice()
+      .range([height, 0]);
+
+  const svg = d3.select("#chart").append("svg")
+      .attr("width",  width  + margin.left + margin.right)
+      .attr("height", height + margin.top  + margin.bottom)
+    .append("g")
+      .attr("transform", `translate(${margin.left},${margin.top})`);
+
+  // ——— 5. Axes ———
+  svg.append("g")
+      .attr("transform", `translate(0,${height})`)
+      .call(
+        d3.axisBottom(x)
+          .tickValues(x.domain().filter((_,i) => i % 10 === 0))      // every tenth tick
+          .tickFormat(d3.timeFormat("%-M:%S"))
+      )
+      .select(".domain").remove();
+
+  svg.append("g")
+    .call(d3.axisLeft(y)
+      .tickValues(ticks)
+      .tickFormat(d => {
+        if (Math.round(d) === Math.round(avgHR)) return `${Math.round(d)} bpm (avg)`;
+        return `${Math.round(d)} bpm`;
+      })
+    )
+    .call(g => g.selectAll(".tick line").clone()
+      .attr("x2", width)
+      .attr("stroke-opacity", 0.1)
+    )
+    .call(g => g.select(".domain").remove());
+
+  // candle stick styling
+    const g = svg.selectAll(".candle")
+      .data(ticker)
+      .join("g")
+        .attr("class", "candle")
+        .attr("transform", d => `translate(${x(d.Date)},0)`);
+
+  // High–Low “wick”
+  /*
+  temporarily disabled, as i dont want the wicks to be visible in the long run
+  g.append("line")
+    .attr("y1", d => y(d.Low))
+    .attr("y2", d => y(d.High))
+    .attr("stroke", "black");
+*/
+  // Open–Close “body” with rounded corners
+  g.append("rect")
+    .attr("x", -x.bandwidth() / 2)
+    .attr("width", x.bandwidth())
+    .attr("y", d => y(Math.max(d.Open, d.Close)))
+    .attr("height", d => Math.abs(y(d.Open) - y(d.Close)))
+    .attr("fill", d => d.zone.color)
+    .attr("rx", 10) // rounded x radius
+    .attr("ry", 10); // rounded y radius
+
+  svg.selectAll(".tick text")
+    .attr("fill", "#999");
+
+  svg.selectAll(".tick line")
+    .attr("stroke", "#ccc")
+    .attr("stroke-opacity", 0.1);
+  // Tooltip
+  const fmtTime = d3.timeFormat("%-M:%S");
+  const fmtNum  = d3.format(".0f");
+  g.append("title")
+    .text(d =>
+      `${fmtTime(d.Date)}
+Low:   ${fmtNum(d.Low)}
+High:  ${fmtNum(d.High)}
+Zone:  ${d.zone.name}`
+    );
+  </script>
+</body>

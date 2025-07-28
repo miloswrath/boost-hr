@@ -1,0 +1,13 @@
+[package]
+name = "hr_smooth_ctypes"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+name = "hr_smooth"
+crate-type = ["cdylib"]
+
+[dependencies.pyo3]
+version = "0.18"
+features = ["extension-module"]
+
