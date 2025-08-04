@@ -1,8 +1,8 @@
-# this file is used to define things like base paths for different systems
+// this file is used to define things like base paths for different systems
 pub mod config;
 
-# extracts file from server location
+// extracts file from server location
 pub mod get_files;
 
-# the main qc module
+// the main qc module
 pub mod qc;
