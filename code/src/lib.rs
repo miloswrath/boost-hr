@@ -6,3 +6,6 @@ pub mod get_files;
 
 // the main qc module
 pub mod qc;
+
+// preprocess both supervised and unsupervised
+pub mod preproc;
